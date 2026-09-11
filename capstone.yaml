@@ -1,0 +1,28 @@
+# Evaluator manifest — see README.md for full human-readable instructions.
+
+run: docker compose up --build
+
+# Run after `run` reports healthy (or after `uvicorn` is up if running
+# without Docker). Safe to re-run.
+seed: python scripts/seed.py http://localhost:8000
+
+test: pytest tests/ -v
+
+base_url: http://localhost:8000
+
+# Endpoints an automated probe can hit directly. Anything under /widgets or
+# /dashboard requires a bearer token — see README "Try it yourself" for the
+# register/login curl commands, or run `seed` and use the demo login it
+# prints.
+endpoints:
+  health: GET /health
+  register: POST /auth/register
+  login: POST /auth/login
+  widgets_crud: /widgets  (GET, POST, PATCH /{id}, DELETE /{id}) [auth required]
+  embed_snippet: GET /widgets/{id}/embed [auth required]
+  widget_bundle: GET /widget/{version}/widget.js
+  public_config: GET /public/widgets/{id}/config
+  public_submit: POST /public/widgets/{id}/submissions
+  dashboard_overview: GET /dashboard/overview [auth required]
+  dashboard_submissions: GET /dashboard/widgets/{id}/submissions [auth required]
+  dashboard_stats: GET /dashboard/widgets/{id}/stats [auth required]

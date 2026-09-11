@@ -1,0 +1,38 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:////data/widget_platform.db
+      JWT_SECRET: docker-compose-dev-secret-change-me
+      MOCK_GEO: "true"
+      PUBLIC_CORS_ALLOW_ORIGINS: "*"
+    volumes:
+      - widget_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # --- Optional Postgres upgrade path (Section 10 of the brief lists this as
+  # the suggested $0 stack; SQLite is used above for zero-setup local dev). To
+  # switch, uncomment this service and set the api service's DATABASE_URL to:
+  #   postgresql+psycopg2://widget_user:widget_pass@db:5432/widget_platform
+  # (also add `psycopg2-binary` to requirements.txt).
+  #
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: widget_user
+  #     POSTGRES_PASSWORD: widget_pass
+  #     POSTGRES_DB: widget_platform
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - pg_data:/var/lib/postgresql/data
+
+volumes:
+  widget_data:
+  # pg_data:

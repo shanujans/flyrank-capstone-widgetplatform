@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Totally Unrelated Customer Website</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 60px auto; color: #222; }
+    code { background: #f2f2f2; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Acme Bakery — Home Page</h1>
+  <p>
+    This page pretends to be a customer's own website. It is served from a
+    different origin than the API (a different port, or opened directly as
+    <code>file://</code>) — which is the whole point: the widget below has to
+    survive a real cross-origin round trip, CORS preflight included.
+  </p>
+  <p>Paste the embed snippet you get from <code>GET /widgets/{id}/embed</code> below, in place of the placeholder id:</p>
+
+  <!--
+    Replace WIDGET_ID_HERE with a real id returned when you create a widget,
+    and API_ORIGIN_HERE with wherever uvicorn is running (e.g. http://127.0.0.1:8000).
+  -->
+  <script src="http://127.0.0.1:8000/widget/v1/widget.js?id=WIDGET_ID_HERE" async></script>
+
+  <p style="margin-top:40px;color:#777;font-size:13px;">
+    Serve this file from a different port than the API, e.g.
+    <code>python -m http.server 5500</code> from the <code>customer-site/</code> folder, then open
+    <code>http://127.0.0.1:5500/index.html</code> — two different origins, exactly like a real customer site.
+  </p>
+</body>
+</html>

@@ -1,0 +1,141 @@
+########## 1. HEALTH CHECK ##########
+$ curl -s http://127.0.0.1:8000/health
+{"status":"ok","app":"FlyRank Widget & Lead-Capture Platform"}
+########## 2. REGISTER TENANT A ##########
+$ curl -s -X POST http://127.0.0.1:8000/auth/register -H 'Content-Type: application/json' -d '{"email":"owner@acmebakery.com","password":"supersecret123"}'
+{"id":1,"email":"owner@acmebakery.com","created_at":"2026-09-10T18:25:07.668122"}
+########## 3. LOGIN TENANT A ##########
+$ curl -s -X POST http://127.0.0.1:8000/auth/login -d 'username=owner@acmebakery.com&password=supersecret123'
+{"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJvd25lckBhY21lYmFrZXJ5LmNvbSIsImV4cCI6MTc4OTE1MTEwN30.W3xMowOONIc-abDgK5zu-r_DxSkgImH92GePyJOcdWk","token_type":"bearer"}
+
+########## 4. UNAUTHENTICATED REQUEST IS REJECTED ##########
+$ curl -s -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:8000/widgets
+HTTP 401
+
+########## 5. CREATE WIDGET (AUTHENTICATED) ##########
+$ curl -s -X POST http://127.0.0.1:8000/widgets -H 'Authorization: Bearer <token>' -d '{...signup_form...}'
+{
+    "id": "bf36075445e9482f8b37b0ede0a7de8b",
+    "type": "signup_form",
+    "title": "Join our newsletter",
+    "description": "Weekly bakery news",
+    "button_text": "Sign up",
+    "fields": [
+        {
+            "name": "email",
+            "label": "Email",
+            "type": "email",
+            "required": true
+        },
+        {
+            "name": "name",
+            "label": "Name",
+            "type": "text",
+            "required": false
+        }
+    ],
+    "display_options": {},
+    "created_at": "2026-09-10T18:25:08.046011",
+    "updated_at": "2026-09-10T18:25:08.046015"
+}
+
+WIDGET_ID=bf36075445e9482f8b37b0ede0a7de8b
+########## 6. TENANT ISOLATION: TENANT B CANNOT SEE TENANT A'S WIDGET ##########
+$ curl -s -X POST http://127.0.0.1:8000/auth/register -H 'Content-Type: application/json' -d '{"email":"owner@othercorp.com","password":"supersecret123"}'
+{"id":2,"email":"owner@othercorp.com","created_at":"2026-09-10T18:25:08.423317"}
+$ curl -s -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:8000/widgets/bf36075445e9482f8b37b0ede0a7de8b -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJvd25lckBvdGhlcmNvcnAuY29tIiwiZXhwIjoxNzg5MTUxMTA4fQ.jQTSKBK9n8uCvZ5csX28pFCVOtQPHywJD-53KdNABII'
+HTTP 404
+
+########## 7. EMBED SNIPPET ##########
+$ curl -s http://127.0.0.1:8000/widgets/bf36075445e9482f8b37b0ede0a7de8b/embed -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJvd25lckBhY21lYmFrZXJ5LmNvbSIsImV4cCI6MTc4OTE1MTEwN30.W3xMowOONIc-abDgK5zu-r_DxSkgImH92GePyJOcdWk'
+{"widget_id":"bf36075445e9482f8b37b0ede0a7de8b","snippet":"<script src=\"http://127.0.0.1:8000/widget/v1/widget.js?id=bf36075445e9482f8b37b0ede0a7de8b\" async></script>"}
+########## 8. WIDGET BUNDLE CACHE HEADERS (versioned, immutable) ##########
+$ curl -s -D - -o /dev/null http://127.0.0.1:8000/widget/v1/widget.js
+HTTP/1.1 200 OK
+date: Thu, 10 Sep 2026 18:25:07 GMT
+server: uvicorn
+cache-control: public, max-age=31536000, immutable
+content-type: application/javascript
+accept-ranges: bytes
+content-length: 6543
+last-modified: Thu, 10 Sep 2026 18:21:28 GMT
+etag: "325369d3d7755f6ebacfa6958b1053ef"
+
+
+########## 9. PUBLIC CONFIG: CACHE HEADERS + CORS FROM A FOREIGN ORIGIN ##########
+$ curl -s -D - -o /dev/null http://127.0.0.1:8000/public/widgets/bf36075445e9482f8b37b0ede0a7de8b/config -H 'Origin: http://customer-site.example:5500'
+HTTP/1.1 200 OK
+date: Thu, 10 Sep 2026 18:25:07 GMT
+server: uvicorn
+content-length: 316
+content-type: application/json
+cache-control: public, max-age=60
+access-control-allow-origin: *
+
+
+########## 10. CORS PREFLIGHT (OPTIONS) ON THE SUBMISSION ENDPOINT ##########
+$ curl -s -D - -o /dev/null -X OPTIONS http://127.0.0.1:8000/public/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions -H 'Origin: http://customer-site.example:5500' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type'
+HTTP/1.1 200 OK
+date: Thu, 10 Sep 2026 18:25:07 GMT
+server: uvicorn
+access-control-allow-origin: *
+access-control-allow-methods: DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT
+access-control-max-age: 600
+access-control-allow-headers: content-type
+content-length: 2
+content-type: text/plain; charset=utf-8
+
+
+########## PROBE 1: VALID CROSS-ORIGIN SUBMISSION -> STORED, 2xx ##########
+$ curl -s -X POST http://127.0.0.1:8000/public/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions -H 'Origin: http://customer-site.example:5500' -H 'Content-Type: application/json' -d '{"data":{"email":"visitor@example.com","name":"Ada Lovelace"},"hp_field":""}'
+{"id":1,"widget_id":"bf36075445e9482f8b37b0ede0a7de8b","data":{"email":"visitor@example.com","name":"Ada Lovelace"},"country":"Sri Lanka","city":"Negombo","geo_provider":"provider_a","notified":true,"created_at":"2026-09-10T18:25:08.861888"}
+########## PROBE 1 (cont.): VISIBLE VIA DASHBOARD API ##########
+$ curl -s http://127.0.0.1:8000/dashboard/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJvd25lckBhY21lYmFrZXJ5LmNvbSIsImV4cCI6MTc4OTE1MTEwN30.W3xMowOONIc-abDgK5zu-r_DxSkgImH92GePyJOcdWk'
+[{"id":1,"widget_id":"bf36075445e9482f8b37b0ede0a7de8b","data":{"email":"visitor@example.com","name":"Ada Lovelace"},"country":"Sri Lanka","city":"Negombo","geo_provider":"provider_a","notified":true,"created_at":"2026-09-10T18:25:08.861888"}]
+########## PROBE 2a: MISSING REQUIRED FIELD -> CLEAN 4xx JSON ##########
+$ curl -s -w '\nHTTP %{http_code}\n' -X POST http://127.0.0.1:8000/public/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions -H 'Content-Type: application/json' -d '{"data":{"name":"No email here"},"hp_field":""}'
+{"detail":["'email' is required"]}
+HTTP 422
+
+########## PROBE 2b: MALFORMED JSON -> 4xx, NEVER 500 ##########
+$ curl -s -w '\nHTTP %{http_code}\n' -X POST http://127.0.0.1:8000/public/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions -H 'Content-Type: application/json' -d '{not valid json'
+{"detail":[{"type":"json_invalid","loc":["body",1],"msg":"JSON decode error","input":{},"ctx":{"error":"Expecting property name enclosed in double quotes"}}]}
+HTTP 422
+
+########## PROBE 2c: OVERSIZED PAYLOAD -> 413 ##########
+$ curl -s -w '\nHTTP %{http_code}\n' -X POST http://127.0.0.1:8000/public/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions -H 'Content-Type: application/json' --data-binary @/tmp/big.txt
+{"detail":"Payload too large"}
+HTTP 413
+
+########## PROBE 3: BURST OF SUBMISSIONS -> 429s, SERVICE STAYS UP ##########
+$ for i in 1 2 3 4 5 6 7 8; do curl -s -o /dev/null -w '%{http_code} '  -X POST http://127.0.0.1:8000/public/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions -H 'Content-Type: application/json' -d '{"data":{"email":"flood@example.com"},"hp_field":""}'; done; echo
+201 201 201 429 429 429 429 429 
+
+$ curl -s http://127.0.0.1:8000/health
+{"status":"ok","app":"FlyRank Widget & Lead-Capture Platform"}
+########## PROBE 4a: DISABLE GEO PROVIDER A -> FALLS BACK TO PROVIDER B ##########
+$ curl -s -X POST http://127.0.0.1:8000/public/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions -H 'Content-Type: application/json' -d '{"data":{"email":"fallback@example.com"},"hp_field":""}'
+{"id":5,"widget_id":"bf36075445e9482f8b37b0ede0a7de8b","data":{"email":"fallback@example.com"},"country":"Sri Lanka","city":"Negombo","geo_provider":"provider_b","notified":true,"created_at":"2026-09-10T18:25:12.095934"}
+########## PROBE 4b: DISABLE BOTH PROVIDERS -> STILL SUCCEEDS, NO GEO ##########
+$ curl -s -X POST http://127.0.0.1:8000/public/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions -H 'Content-Type: application/json' -d '{"data":{"email":"nogeo@example.com"},"hp_field":""}'
+{"id":6,"widget_id":"bf36075445e9482f8b37b0ede0a7de8b","data":{"email":"nogeo@example.com"},"country":null,"city":null,"geo_provider":null,"notified":true,"created_at":"2026-09-10T18:25:15.162936"}
+########## PROBE 5: NOTIFICATION SIDE-EFFECT FAILS -> SUBMISSION STILL STORED ##########
+$ curl -s -X POST http://127.0.0.1:8000/public/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions -H 'Content-Type: application/json' -d '{"data":{"email":"sideeffect@example.com"},"hp_field":""}'
+{"id":7,"widget_id":"bf36075445e9482f8b37b0ede0a7de8b","data":{"email":"sideeffect@example.com"},"country":null,"city":null,"geo_provider":null,"notified":false,"created_at":"2026-09-10T18:25:18.225944"}
+(server log line proving the notify step actually raised, then was swallowed:)
+$ tail -5 /tmp/uvicorn4.log
+INFO:     Started server process [1652]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:44308 - "POST /public/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions HTTP/1.1" 201 Created
+
+########## PROBE 6: HONEYPOT FILLED -> SILENTLY DROPPED, NOT STORED ##########
+$ curl -s -X POST http://127.0.0.1:8000/public/widgets/bf36075445e9482f8b37b0ede0a7de8b/submissions -H 'Content-Type: application/json' -d '{"data":{"email":"bot@example.com"},"hp_field":"I am a bot"}'
+{"id":0,"widget_id":"bf36075445e9482f8b37b0ede0a7de8b","data":{},"country":null,"city":null,"geo_provider":null,"notified":false,"created_at":"2026-09-10T18:25:18.290687Z"}
+submission count before honeypot test: 7, after: 7 (unchanged = dropped)
+########## DASHBOARD OVERVIEW + STATS ##########
+$ curl -s http://127.0.0.1:8000/dashboard/overview -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJvd25lckBhY21lYmFrZXJ5LmNvbSIsImV4cCI6MTc4OTE1MTEwN30.W3xMowOONIc-abDgK5zu-r_DxSkgImH92GePyJOcdWk'
+{"total_widgets":1,"total_submissions":7,"submissions_last_7_days":7}
+$ curl -s http://127.0.0.1:8000/dashboard/widgets/bf36075445e9482f8b37b0ede0a7de8b/stats -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJvd25lckBhY21lYmFrZXJ5LmNvbSIsImV4cCI6MTc4OTE1MTEwN30.W3xMowOONIc-abDgK5zu-r_DxSkgImH92GePyJOcdWk'
+{"widget_id":"bf36075445e9482f8b37b0ede0a7de8b","total_submissions":7,"submissions_by_day":{"2026-09-10":7},"top_countries":{"Sri Lanka":5}}
